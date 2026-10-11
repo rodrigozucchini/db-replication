@@ -1,0 +1,53 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    environment:
+      DATABASE_URL: postgresql://admin1:admin1@db1:5432/mi_app1
+      READ_DATABASE_URL: postgresql://admin1:admin1@db2:5432/mi_app1
+    depends_on:
+      db1:
+        condition: service_healthy
+
+  db1:
+    image: postgres:17-alpine
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    environment:
+      POSTGRES_DB: mi_app1
+      POSTGRES_USER: admin1
+      POSTGRES_PASSWORD: admin1
+    volumes:
+      - postgres_data1:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin1 -d mi_app1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  db2:
+    image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "/usr/local/bin/replica-entrypoint.sh"]
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      REPLICATION_PASSWORD: admin
+    depends_on:
+      db1:
+        condition: service_healthy
+    volumes:
+      - postgres_data2:/var/lib/postgresql/data
+      - ./scripts/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+
+volumes:
+  postgres_data1:
+  postgres_data2:
